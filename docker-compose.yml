@@ -1,0 +1,74 @@
+version: '3.8'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Crescent Pharmacy Network – Payment Idempotency Service
+# Local development stack: PostgreSQL 15 + Redis 7 + Spring Boot app
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: crescent-postgres
+    environment:
+      POSTGRES_DB: idempotency_db
+      POSTGRES_USER: crescent
+      POSTGRES_PASSWORD: crescent_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crescent -d idempotency_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crescent-net
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: crescent-redis
+    command: redis-server --requirepass redis_secret
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "redis_secret", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - crescent-net
+
+  # ── Application ─────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crescent-idempotency-service
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/idempotency_db
+      SPRING_DATASOURCE_USERNAME: crescent
+      SPRING_DATASOURCE_PASSWORD: crescent_secret
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redis_secret
+      APP_IDEMPOTENCY_KEY_EXPIRATION_HOURS: 24
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - crescent-net
+
+volumes:
+  postgres_data:
+
+networks:
+  crescent-net:
+    driver: bridge
