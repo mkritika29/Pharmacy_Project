@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: crescent-pharmacy-idempotency-service
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  datasource:
+    url: jdbc:postgresql://localhost:5432/idempotency_db
+    username: crescent
+    password: crescent_secret
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_schema: public
+
+  # ── Flyway migrations ───────────────────────────────────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: redis_secret
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 10
+          min-idle: 2
+          max-wait: 1000ms
+
+  # ── JSON ────────────────────────────────────────────────────────────────────
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
+# ── Server ───────────────────────────────────────────────────────────────────
+server:
+  port: 8080
+
+# ── Actuator / Observability ─────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# ── Application-specific configuration ───────────────────────────────────────
+app:
+  idempotency:
+    # How long (hours) an idempotency key remains active before it can be reused
+    key-expiration-hours: 24
+    # How long (seconds) to wait for a PENDING payment to complete before timing out
+    pending-timeout-seconds: 300
+    # Max poll attempts while waiting for a concurrent PENDING payment to complete
+    max-wait-attempts: 15
+    # Initial wait interval (ms) between polls – uses exponential back-off
+    wait-interval-ms: 200
+
+  mock-processor:
+    # Probability of a payment being approved (0.0 – 1.0)
+    success-rate: 0.80
+    # Probability of a payment being declined
+    decline-rate: 0.15
+    # Probability of a gateway error
+    error-rate: 0.05
+    # Simulated processing latency range (ms)
+    processing-delay-min-ms: 50
+    processing-delay-max-ms: 200
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging:
+  level:
+    com.crescent.pharmacy: DEBUG
+    org.springframework.data: WARN
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [idem=%X{idempotencyKey:-?}] [merchant=%X{merchantId:-?}] %logger{36} - %msg%n"
